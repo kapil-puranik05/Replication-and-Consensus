@@ -1,0 +1,3 @@
+mvn spring-boot:run "-Dspring-boot.run.arguments=--server.port=8080 --raft.data-dir=configs/node1"
+mvn spring-boot:run "-Dspring-boot.run.arguments=--server.port=8081 --raft.data-dir=configs/node2"
+mvn spring-boot:run "-Dspring-boot.run.arguments=--server.port=8082 --raft.data-dir=configs/node3"
