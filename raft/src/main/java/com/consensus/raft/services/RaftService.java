@@ -368,7 +368,6 @@ public class RaftService {
         int logSize = state.getLog().size();
         state.getVotesReceived().clear();
         state.getAckedLength().put(state.getNodeId(), logSize);
-
         for (int peer : state.getPeers()) {
             state.getSentLength().put(peer, logSize);
             state.getAckedLength().putIfAbsent(peer, 0);
