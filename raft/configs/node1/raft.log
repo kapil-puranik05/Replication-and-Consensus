@@ -1,2 +1,3 @@
 {"command":{"key":"city","type":"SET","value":"delhi"},"index":0,"term":3}
 {"command":{"key":"city","type":"DELETE","value":"delhi"},"index":1,"term":3}
+{"command":{"key":"city","type":"DELETE","value":"delhi"},"index":2,"term":9}

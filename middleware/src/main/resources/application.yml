@@ -1,0 +1,6 @@
+server:
+    port: 8000
+cluster:
+    route1: ${ROUTE_1} 
+    route2: ${ROUTE_2}
+    route3: ${ROUTE_3}
