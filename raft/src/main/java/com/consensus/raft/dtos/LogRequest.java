@@ -6,7 +6,7 @@ import lombok.Data;
 
 @Data
 public class LogRequest {
-    private int leaderId;
+    private String leader;
     private int term;
     private int prefixLength;
     private int prefixTerm;

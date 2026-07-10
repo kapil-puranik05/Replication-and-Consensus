@@ -34,4 +34,5 @@ build/
 .env
 .env.*
 
+configs
 /configs/*

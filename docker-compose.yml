@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  node1:
+    build:
+      context: ./raft
+    command:
+      - "--server.port=8080"
+      - "--raft.data-dir=configs/node1"
+    ports:
+      - "8080:8080"
+    volumes:
+      - "./raft/config/node1":"app/config/node1"
+
+  node2:
+    build:
+      context: ./raft
+    command:
+      - "--server.port=8081"
+      - "--raft.data-dir=configs/node2"
+    ports:
+      - "8081:8081"
+    volumes:
+      - "./raft/config/node2":"app/config/node2"
+
+  node3:
+    build:
+      context: ./raft
+    command:
+      - "--server.port=8082"
+      - "--raft.data-dir=configs/node3"
+    ports:
+      - "8082:8082"
+    volumes:
+      - "./raft/config/node3":"app/config/node3"

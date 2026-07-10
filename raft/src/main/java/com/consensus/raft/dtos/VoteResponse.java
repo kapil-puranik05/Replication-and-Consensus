@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class VoteResponse {
-    private int voterId;
+    private String voter;
     private int term;
     private boolean granted;
 }

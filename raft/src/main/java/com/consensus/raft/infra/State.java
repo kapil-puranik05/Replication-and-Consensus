@@ -11,26 +11,26 @@ import lombok.Data;
 
 @Data
 public class State {
-    private int nodeId;
-    private List<Integer> peers;
+    private String node;
+    private List<String> peers;
     private int term;
-    private Integer votedFor;
+    private String votedFor;
     private List<LogEntry> log;
-    private Integer leaderId;
+    private String leader;
     private Role role;
     private int commitLength;
-    private HashSet<Integer> votesReceived;
-    private HashMap<Integer, Integer> sentLength; 
-    private HashMap<Integer, Integer> ackedLength;
+    private HashSet<String> votesReceived;
+    private HashMap<String, Integer> sentLength; 
+    private HashMap<String, Integer> ackedLength;
 
     @Override
     public String toString() {
         return "State{" +
-            "nodeId=" + nodeId +
+            "node=" + node +
             ", role=" + role +
             ", term=" + term +
             ", votedFor=" + votedFor +
-            ", leaderId=" + leaderId +
+            ", leader=" + leader +
             ", commitLength=" + commitLength +
             ", logSize=" + (log == null ? 0 : log.size()) +
             ", votesReceived=" + (votesReceived == null ? 0 : votesReceived.size()) +

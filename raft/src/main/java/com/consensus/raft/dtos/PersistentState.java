@@ -7,5 +7,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class PersistentState {
     private int term;
-    private Integer votedFor;
+    private String votedFor;
 }

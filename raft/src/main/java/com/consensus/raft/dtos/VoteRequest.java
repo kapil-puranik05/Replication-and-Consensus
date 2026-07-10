@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class VoteRequest {
-    private int nodeId;
+    private String node;
     private int currentTerm;
     private int logLength;
     private int lastTerm;

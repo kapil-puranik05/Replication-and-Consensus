@@ -59,12 +59,12 @@ public class RaftService {
         NodeDetails nodeDetails = loadNodeDetails();
         PersistentState persistentState = loadPersistentState();
         List<LogEntry> log = loadLog();
-        state.setNodeId(nodeDetails.getNodeId());
+        state.setNode(nodeDetails.getNode());
         state.setPeers(nodeDetails.getPeers());
         state.setTerm(persistentState.getTerm());
         state.setVotedFor(persistentState.getVotedFor());
         state.setRole(Role.FOLLOWER);
-        state.setLeaderId(null);
+        state.setLeader(null);
         state.setAckedLength(new HashMap<>());
         state.setSentLength(new HashMap<>());
         state.setVotesReceived(new HashSet<>());
@@ -72,12 +72,12 @@ public class RaftService {
         state.setCommitLength(0);
         rebuildStateMachine(log);
         state.setCommitLength(log.size());
-        state.getAckedLength().put(state.getNodeId(), state.getLog().size());
+        state.getAckedLength().put(state.getNode(), state.getLog().size());
         System.out.println(state);
     }
 
     public boolean onWriteRequest(Command command) {
-        List<Integer> peers;
+        List<String> peers;
         synchronized (lock) {
             if (state.getRole() != Role.LEADER) {
                 return false;
@@ -88,17 +88,17 @@ public class RaftService {
             logEntry.setCommand(command);
             state.getLog().add(logEntry);
             appendLogEntry(logEntry);
-            state.getAckedLength().put(state.getNodeId(), state.getLog().size());
+            state.getAckedLength().put(state.getNode(), state.getLog().size());
             peers = new ArrayList<>(state.getPeers());
         }
-        for (int peer : peers) {
-            executorService.submit(() -> replicateLog(state.getNodeId(), peer));
+        for (String peer : peers) {
+            executorService.submit(() -> replicateLog(state.getNode(), peer));
         }
         return true;
     }
 
     public void onElectionTimeout() {
-        List<Integer> peers;
+        List<String> peers;
         VoteRequest voteRequest;
         synchronized (lock) {
             if (state.getRole() == Role.LEADER) {
@@ -106,21 +106,21 @@ public class RaftService {
             }
             state.setTerm(state.getTerm() + 1);
             state.setRole(Role.CANDIDATE);
-            state.setLeaderId(null);
-            state.setVotedFor(state.getNodeId());
+            state.setLeader(null);
+            state.setVotedFor(state.getNode());
             state.getVotesReceived().clear();
-            state.getVotesReceived().add(state.getNodeId());
+            state.getVotesReceived().add(state.getNode());
             saveState();
             voteRequest = new VoteRequest();
             voteRequest.setCurrentTerm(state.getTerm());
-            voteRequest.setNodeId(state.getNodeId());
+            voteRequest.setNode(state.getNode());
             voteRequest.setLogLength(state.getLog().size());
             voteRequest.setLastTerm(lastLogTerm());
             peers = new ArrayList<>(state.getPeers());
-            System.out.println("Node " + state.getNodeId() + " started election for term " + state.getTerm());
+            System.out.println("Node " + state.getNode() + " started election for term " + state.getTerm());
         }
         electionTimer.startTimer(this::onElectionTimeout);
-        for (int peer : peers) {
+        for (String peer : peers) {
             executorService.submit(() -> sendVoteRequest(peer, voteRequest));
         }
     }
@@ -132,10 +132,10 @@ public class RaftService {
                 becomeFollower(voteRequest.getCurrentTerm(), null);
             }
             boolean logOk = isCandidateLogUpToDate(voteRequest);
-            voteResponse.setVoterId(state.getNodeId());
+            voteResponse.setVoter(state.getNode());
             voteResponse.setTerm(state.getTerm());
-            if (voteRequest.getCurrentTerm() == state.getTerm() && logOk && (state.getVotedFor() == null || state.getVotedFor().equals(voteRequest.getNodeId()))) {
-                state.setVotedFor(voteRequest.getNodeId());
+            if (voteRequest.getCurrentTerm() == state.getTerm() && logOk && (state.getVotedFor() == null || state.getVotedFor().equals(voteRequest.getNode()))) {
+                state.setVotedFor(voteRequest.getNode());
                 saveState();
                 voteResponse.setGranted(true);
                 electionTimer.startTimer(this::onElectionTimeout);
@@ -156,35 +156,35 @@ public class RaftService {
             if (state.getRole() != Role.CANDIDATE || voteResponse.getTerm() != state.getTerm() || !voteResponse.isGranted()) {
                 return;
             }
-            state.getVotesReceived().add(voteResponse.getVoterId());
+            state.getVotesReceived().add(voteResponse.getVoter());
             int clusterSize = state.getPeers().size() + 1;
             int quorum = (clusterSize / 2) + 1;
             if (state.getVotesReceived().size() >= quorum) {
                 state.setRole(Role.LEADER);
-                state.setLeaderId(state.getNodeId());
+                state.setLeader(state.getNode());
                 initializeLeaderTracking();
                 electionTimer.cancelTimer();
                 logReplicationTimer.start(this::broadcastHeartbeats);
-                System.out.println("Node " + state.getNodeId() + " became leader for term " + state.getTerm());
+                System.out.println("Node " + state.getNode() + " became leader for term " + state.getTerm());
             }
         }
         broadcastHeartbeats();
     }
 
-    public void replicateLog(int leaderId, int followerId) {
+    public void replicateLog(String leader, String follower) {
         LogRequest logRequest;
         synchronized (lock) {
-            if (state.getRole() != Role.LEADER || state.getNodeId() != leaderId) {
+            if (state.getRole() != Role.LEADER || !state.getNode().equals(leader)) {
                 return;
             }
-            int prefixLength = state.getSentLength().getOrDefault(followerId, 0);
+            int prefixLength = state.getSentLength().getOrDefault(follower, 0);
             int prefixTerm = prefixLength == 0 ? 0 : state.getLog().get(prefixLength - 1).getTerm();
             List<LogEntry> suffix = new ArrayList<>();
             for (int index = prefixLength; index < state.getLog().size(); index++) {
                 suffix.add(copyEntry(state.getLog().get(index)));
             }
             logRequest = new LogRequest();
-            logRequest.setLeaderId(leaderId);
+            logRequest.setLeader(leader);
             logRequest.setTerm(state.getTerm());
             logRequest.setPrefixLength(prefixLength);
             logRequest.setPrefixTerm(prefixTerm);
@@ -193,7 +193,7 @@ public class RaftService {
         }
         try {
             LogResponse response = webClient.post()
-                    .uri("http://localhost:" + followerId + "/appendEntries")
+                    .uri("http://" + follower + "/appendEntries")
                     .bodyValue(logRequest)
                     .retrieve()
                     .bodyToMono(LogResponse.class)
@@ -202,7 +202,7 @@ public class RaftService {
                 onReceivingLogResponse(response);
             }
         } catch (Exception exception) {
-            System.err.println("Failed to replicate log to peer " + followerId + ": " + exception.getMessage());
+            System.err.println("Failed to replicate log to peer " + follower + ": " + exception.getMessage());
         }
     }
 
@@ -210,18 +210,18 @@ public class RaftService {
         LogResponse logResponse = new LogResponse();
         synchronized (lock) {
             if (logRequest.getTerm() > state.getTerm()) {
-                becomeFollower(logRequest.getTerm(), logRequest.getLeaderId());
+                becomeFollower(logRequest.getTerm(), logRequest.getLeader());
             }
             if (logRequest.getTerm() == state.getTerm()) {
                 if (state.getRole() != Role.FOLLOWER) {
                     state.setRole(Role.FOLLOWER);
                     logReplicationTimer.cancel();
                 }
-                state.setLeaderId(logRequest.getLeaderId());
+                state.setLeader(logRequest.getLeader());
                 electionTimer.startTimer(this::onElectionTimeout);
             }
             boolean logOk = state.getLog().size() >= logRequest.getPrefixLength() && (logRequest.getPrefixLength() == 0 || state.getLog().get(logRequest.getPrefixLength() - 1).getTerm() == logRequest.getPrefixTerm());
-            logResponse.setNodeId(state.getNodeId());
+            logResponse.setNode(state.getNode());
             logResponse.setTerm(state.getTerm());
             if (logRequest.getTerm() == state.getTerm() && logOk) {
                 appendEntries(logRequest.getPrefixLength(), logRequest.getCommitLength(), logRequest.getSuffix());
@@ -277,17 +277,17 @@ public class RaftService {
                 return;
             }
             if (logResponse.isAcknowledged()) {
-                int currentAck = state.getAckedLength().getOrDefault(logResponse.getNodeId(), 0);
+                int currentAck = state.getAckedLength().getOrDefault(logResponse.getNode(), 0);
                 if (logResponse.getAckedLength() >= currentAck) {
-                    state.getSentLength().put(logResponse.getNodeId(), logResponse.getAckedLength());
-                    state.getAckedLength().put(logResponse.getNodeId(), logResponse.getAckedLength());
+                    state.getSentLength().put(logResponse.getNode(), logResponse.getAckedLength());
+                    state.getAckedLength().put(logResponse.getNode(), logResponse.getAckedLength());
                     commitEntries();
                 }
                 return;
             }
-            int nextPrefix = Math.max(0, state.getSentLength().getOrDefault(logResponse.getNodeId(), 0) - 1);
-            state.getSentLength().put(logResponse.getNodeId(), nextPrefix);
-            executorService.submit(() -> replicateLog(state.getNodeId(), logResponse.getNodeId()));
+            int nextPrefix = Math.max(0, state.getSentLength().getOrDefault(logResponse.getNode(), 0) - 1);
+            state.getSentLength().put(logResponse.getNode(), nextPrefix);
+            executorService.submit(() -> replicateLog(state.getNode(), logResponse.getNode()));
         }
     }
 
@@ -296,7 +296,7 @@ public class RaftService {
         int newCommitLength = state.getCommitLength();
         for (int candidateLength = state.getCommitLength() + 1; candidateLength <= state.getLog().size(); candidateLength++) {
             int acknowledgements = 1;
-            for (int peer : state.getPeers()) {
+            for (String peer : state.getPeers()) {
                 if (state.getAckedLength().getOrDefault(peer, 0) >= candidateLength) {
                     acknowledgements++;
                 }
@@ -314,10 +314,10 @@ public class RaftService {
     public Map<String, Object> getStatus() {
         synchronized (lock) {
             Map<String, Object> status = new LinkedHashMap<>();
-            status.put("nodeId", state.getNodeId());
+            status.put("node", state.getNode());
             status.put("role", state.getRole());
             status.put("term", state.getTerm());
-            status.put("leaderId", state.getLeaderId());
+            status.put("leader", state.getLeader());
             status.put("commitLength", state.getCommitLength());
             status.put("logLength", state.getLog().size());
             status.put("peers", new ArrayList<>(state.getPeers()));
@@ -328,16 +328,16 @@ public class RaftService {
         }
     }
 
-    public Integer getLeaderId() {
+    public String getLeader() {
         synchronized (lock) {
-            return state.getLeaderId();
+            return state.getLeader();
         }
     }
 
-    private void sendVoteRequest(int peer, VoteRequest voteRequest) {
+    private void sendVoteRequest(String peer, VoteRequest voteRequest) {
         try {
             VoteResponse response = webClient.post()
-                    .uri("http://localhost:" + peer + "/requestVote")
+                    .uri("http://" + peer + "/requestVote")
                     .bodyValue(voteRequest)
                     .retrieve()
                     .bodyToMono(VoteResponse.class)
@@ -352,32 +352,32 @@ public class RaftService {
     }
 
     private void broadcastHeartbeats() {
-        List<Integer> peers;
+        List<String> peers;
         synchronized (lock) {
             if (state.getRole() != Role.LEADER) {
                 return;
             }
             peers = new ArrayList<>(state.getPeers());
         }
-        for (int peer : peers) {
-            executorService.submit(() -> replicateLog(state.getNodeId(), peer));
+        for (String peer : peers) {
+            executorService.submit(() -> replicateLog(state.getNode(), peer));
         }
     }
 
     private void initializeLeaderTracking() {
         int logSize = state.getLog().size();
         state.getVotesReceived().clear();
-        state.getAckedLength().put(state.getNodeId(), logSize);
-        for (int peer : state.getPeers()) {
+        state.getAckedLength().put(state.getNode(), logSize);
+        for (String peer : state.getPeers()) {
             state.getSentLength().put(peer, logSize);
             state.getAckedLength().putIfAbsent(peer, 0);
         }
     }
 
-    private void becomeFollower(int term, Integer leaderId) {
+    private void becomeFollower(int term, String leader) {
         state.setTerm(term);
         state.setRole(Role.FOLLOWER);
-        state.setLeaderId(leaderId);
+        state.setLeader(leader);
         state.setVotedFor(null);
         state.getVotesReceived().clear();
         saveState();

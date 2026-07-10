@@ -36,7 +36,7 @@ public class RaftController {
         boolean accepted = raftService.onWriteRequest(command);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("accepted", accepted);
-        response.put("leaderId", raftService.getLeaderId());
+        response.put("leaderId", raftService.getLeader());
         if (accepted) {
             return ResponseEntity.accepted().body(response);
         }

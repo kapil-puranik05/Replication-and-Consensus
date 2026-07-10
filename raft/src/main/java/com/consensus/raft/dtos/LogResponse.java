@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class LogResponse {
-    private int nodeId;
+    private String node;
     private int term;
     private int ackedLength;
     private boolean acknowledged;
