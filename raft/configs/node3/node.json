@@ -1,5 +1,5 @@
 {
-    "node":"node3:8082",
-    "peers":["node1:8080", "node2:8081"],
-    "gatewayAddress":"gateway:9000"
+    "node":"localhost:8082",
+    "peers":["localhost:8080", "localhost:8081"],
+    "gatewayAddress":"localhost:9000"
 }

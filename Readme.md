@@ -1,154 +1,121 @@
 # Raft Consensus Implementation
 
-## Overview
-
-This project is a minimal implementation of the Raft consensus algorithm built from scratch in Java. The objective was to understand how distributed consensus works by implementing the protocol rather than only studying its theory.
-
-The project consists of a Raft cluster responsible for leader election and log replication, along with a middleware gateway that routes client requests to the current leader.
+A minimal, production-style implementation of the Raft consensus algorithm built from scratch in Java. This project demonstrates the core mechanics of distributed consensus—including leader election, log replication, and fault tolerance—paired with a custom middleware gateway for request routing.
 
 ---
 
-## Features
+## Architecture Overview
 
-### Raft Consensus
-
-- Leader election using randomized election timeouts
-- Vote request and response protocol
-- Log replication using AppendEntries RPC
-- Majority quorum-based commit mechanism
-- Persistent state recovery after node failures
-- Automatic leader failover
-
-### Middleware Gateway
-
-- Receives all client requests
-- Discovers the cluster leader during startup
-- Caches the current leader for subsequent requests
-- Automatically forwards write requests to the leader
-- Re-discovers the leader if the cached leader becomes unavailable
-
-### Persistence
-
-Each node persists the following state to disk:
-
-- Current Term
-- Voted For
-- Replicated Log
-
-This allows nodes to recover their state after a restart.
-
----
-
-## Architecture
+The system consists of a self-managing Raft cluster and a middleware gateway that decouples clients from cluster topology.
 
 ```
                     Client
                        │
-              Middleware Gateway
+             Middleware Gateway
                        │
-             Routes requests to leader
+          (Routes requests to Leader)
                        │
           ┌────────────┼────────────┐
         Node 1       Node 2       Node 3
+     (Follower)     (Leader)    (Follower)
 ```
 
-Each node maintains:
-
-### Persistent State
-
-- currentTerm
-- votedFor
-- replicated log
-
-### Volatile State
-
-- role
-- leaderId
-- commitIndex
-- nextIndex / matchIndex (leader only)
-
-Communication between nodes is performed using REST APIs.
+Each node maintains the standard Raft state machine variants:
+*   **Persistent State:** `currentTerm`, `votedFor`, and the `replicated log` (flushed to disk).
+*   **Volatile State:** `role` (Leader/Follower/Candidate), `leaderId`, and `commitIndex`.
+*   **Leader-Specific State:** `nextIndex[]` and `matchIndex[]` tracking peer progress.
 
 ---
 
-## How It Works
+## Core Features
 
-### Leader Election
+### 1. Raft Consensus Engine
+*   **Leader Election:** Automated elections driven by randomized election timeouts to minimize split votes.
+*   **Log Replication:** Reliable state synchronization across peers using AppendEntries RPCs.
+*   **Quorum-Based Commits:** Entries are marked committed only after safe replication to a majority (> N/2) of the cluster.
+*   **Failover & Recovery:** Automatic leader reelection upon failure, and disk-based state recovery for restarting nodes.
 
-- Followers start an election after a randomized timeout.
-- Candidates request votes from all peers.
-- A node becomes the leader after receiving votes from the majority of the cluster.
-- Followers step down if they receive messages with a higher term.
-
-### Log Replication
-
-- The middleware forwards client write requests to the current leader.
-- The leader appends the request to its log.
-- Log entries are replicated to follower nodes.
-- Entries are committed after acknowledgement from a majority of the cluster.
-- Once committed, the entries are applied to the state machine on every node.
-
-### Middleware
-
-The middleware acts as the single entry point for client requests.
-
-During startup, it discovers the current leader by contacting the available nodes. The leader information is cached to avoid unnecessary lookups for every request.
-
-If the cached leader becomes unavailable, the middleware contacts the cluster again to determine the current leader and retries the request automatically.
-
-### Fault Tolerance
-
-- Persistent state survives node failures.
-- Restarted nodes recover their previous state from disk.
-- Leader failures trigger automatic re-election.
+### 2. Middleware Gateway
+*   **Leader Discovery:** Dynamically queries the cluster at startup to locate the active leader.
+*   **Smart Caching:** Caches the current leader's address to optimize subsequent client requests.
+*   **Transparent Routing:** Automatically forwards client write operations to the active leader.
+*   **Failover Handling:** Intercepts routing failures, triggers immediate leader re-discovery, and retries dropped requests transparently.
 
 ---
 
-## Running
+## Technical Stack
 
-1. Configure the nodes using the respective `node.json` files.
-2. Start the cluster using Docker Compose.
+*   **Language:** Java
+*   **Framework:** Spring Boot & Spring WebClient (REST-based RPC communication)
+*   **Containerization:** Docker & Docker Compose
+*   **Build Tool:** Maven
 
+---
+
+## Configuration & Setup
+
+### 1. Directory Structure
+Create the required configuration topology inside the project's root folder (`/raft`):
+
+```text
+raft/
+├── configs/
+│   ├── node1/
+│   │   └── node.json
+│   ├── node2/
+│   │   └── node.json
+│   └── node3/
+│       └── node.json
+```
+
+### 2. Configuration Format (`node.json`)
+Every node requires a local JSON configuration outlining its network profile, peer cluster, and the entry gateway.
+
+#### Docker Compose Profile
+```json
+{
+  "node": "node1:8080",
+  "peers": ["node2:8081", "node3:8082"],
+  "gatewayAddress": "gateway:9000"
+}
+```
+
+#### Local Native Profile
+```json
+{
+  "node": "localhost:8080",
+  "peers": ["localhost:8081", "localhost:8082"],
+  "gatewayAddress": "localhost:9000"
+}
+```
+
+### 3. Launching the Cluster
+
+Run your preferred deployment mode from the project root:
+
+**Using Docker Compose:**
 ```bash
 docker compose up --build
 ```
 
-The compose file starts:
-
-- Three Raft nodes
-- Middleware Gateway
-
-Client requests should be sent to the middleware instead of individual nodes.
+**Using Local Bash Script (Linux/macOS):**
+```bash
+source start.sh
+```
 
 ---
 
-## Current Limitations
+## Current Scope & Limitations
 
-This project focuses on implementing the core Raft protocol.
+This project targets the foundational protocols of the Raft whitepaper. The following optimization and production-hardening features are omitted by design:
 
-The following features are currently not implemented:
-
-- Snapshotting
-- Log compaction
-- Dynamic cluster membership
-- Network partition handling
-- Authentication and security
+*   **Log Management:** No log compaction or snapshotting mechanisms.
+*   **Cluster Dynamics:** Fixed cluster membership (no dynamic additions or removals).
+*   **Advanced Networking:** Basic network partition recoveries are implemented, but complex network split-brain edges are unoptimized.
+*   **Security:** Transport layer lacks TLS authentication or payload encryption.
 
 ---
 
-## Technologies Used
+## Purpose & Insights
 
-- Java
-- Spring Boot
-- Spring WebClient
-- Docker
-- Docker Compose
-- Maven
-
----
-
-## Why I Built This
-
-The purpose of this project was to gain a practical understanding of distributed systems and consensus algorithms by implementing Raft from scratch.
-
-Building the protocol helped me understand leader election, quorum-based replication, fault tolerance, and how middleware can simplify client interaction with a distributed system.
+This system was developed to bridge the gap between distributed systems theory and implementation realities. Building the engine from the ground up highlighted the subtle challenges of concurrency, the necessity of rigorous state persistence, and the elegance of using a gateway middleware layer to simplify client interactions with shifting cluster topologies.
