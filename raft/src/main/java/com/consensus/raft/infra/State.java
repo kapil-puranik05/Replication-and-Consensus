@@ -22,6 +22,7 @@ public class State {
     private HashSet<String> votesReceived;
     private HashMap<String, Integer> sentLength; 
     private HashMap<String, Integer> ackedLength;
+    private String gatewayAddress;
 
     @Override
     public String toString() {

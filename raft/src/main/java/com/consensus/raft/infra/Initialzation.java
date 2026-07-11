@@ -16,6 +16,9 @@ public class Initialzation implements ApplicationRunner{
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        String address = raftService.getNodeAddress();
+        String gatewayAddress = raftService.getGatewayAddress();
+        raftService.registerWithGateway(address, gatewayAddress);
         Thread.sleep(3000);
         electionTimer.startTimer(raftService::onElectionTimeout);
     }

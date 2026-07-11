@@ -6,6 +6,7 @@ import com.consensus.raft.dtos.LogRequest;
 import com.consensus.raft.dtos.LogResponse;
 import com.consensus.raft.dtos.NodeDetails;
 import com.consensus.raft.dtos.PersistentState;
+import com.consensus.raft.dtos.RegistrationRequest;
 import com.consensus.raft.dtos.VoteRequest;
 import com.consensus.raft.dtos.VoteResponse;
 import com.consensus.raft.infra.ElectionTimer;
@@ -52,6 +53,32 @@ public class RaftService {
     private final Map<String, String> stateMachine = new HashMap<>();
     private State state;
 
+    public void registerWithGateway(String address, String gatewayAddress) {
+        RegistrationRequest request = new RegistrationRequest();
+        request.setAddress(address);
+        webClient.post()
+                .uri("http://" + gatewayAddress +"/gateway/register")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnSuccess(response -> System.out.println("Gateway: " + response))
+                .doOnError(error -> System.err.println("Failed to register with gateway: " + error.getMessage()))
+                .subscribe();
+        System.out.println("Node registered");
+    }
+
+    public String getNodeAddress() {
+        synchronized(lock) {
+            return state.getNode();
+        }
+    }
+
+    public String getGatewayAddress() {
+        synchronized(lock) {
+            return state.getGatewayAddress();
+        }
+    }
+
     @PostConstruct
     public void initialize() {
         state = new State();
@@ -73,6 +100,7 @@ public class RaftService {
         rebuildStateMachine(log);
         state.setCommitLength(log.size());
         state.getAckedLength().put(state.getNode(), state.getLog().size());
+        state.setGatewayAddress(nodeDetails.getGatewayAddress());
         System.out.println(state);
     }
 
@@ -134,7 +162,8 @@ public class RaftService {
             boolean logOk = isCandidateLogUpToDate(voteRequest);
             voteResponse.setVoter(state.getNode());
             voteResponse.setTerm(state.getTerm());
-            if (voteRequest.getCurrentTerm() == state.getTerm() && logOk && (state.getVotedFor() == null || state.getVotedFor().equals(voteRequest.getNode()))) {
+            if (voteRequest.getCurrentTerm() == state.getTerm() && logOk
+                    && (state.getVotedFor() == null || state.getVotedFor().equals(voteRequest.getNode()))) {
                 state.setVotedFor(voteRequest.getNode());
                 saveState();
                 voteResponse.setGranted(true);
@@ -153,7 +182,8 @@ public class RaftService {
                 becomeFollower(voteResponse.getTerm(), null);
                 return;
             }
-            if (state.getRole() != Role.CANDIDATE || voteResponse.getTerm() != state.getTerm() || !voteResponse.isGranted()) {
+            if (state.getRole() != Role.CANDIDATE || voteResponse.getTerm() != state.getTerm()
+                    || !voteResponse.isGranted()) {
                 return;
             }
             state.getVotesReceived().add(voteResponse.getVoter());
@@ -220,7 +250,8 @@ public class RaftService {
                 state.setLeader(logRequest.getLeader());
                 electionTimer.startTimer(this::onElectionTimeout);
             }
-            boolean logOk = state.getLog().size() >= logRequest.getPrefixLength() && (logRequest.getPrefixLength() == 0 || state.getLog().get(logRequest.getPrefixLength() - 1).getTerm() == logRequest.getPrefixTerm());
+            boolean logOk = state.getLog().size() >= logRequest.getPrefixLength() && (logRequest.getPrefixLength() == 0
+                    || state.getLog().get(logRequest.getPrefixLength() - 1).getTerm() == logRequest.getPrefixTerm());
             logResponse.setNode(state.getNode());
             logResponse.setTerm(state.getTerm());
             if (logRequest.getTerm() == state.getTerm() && logOk) {
@@ -294,7 +325,8 @@ public class RaftService {
     public void commitEntries() {
         int quorum = (state.getPeers().size() + 1) / 2 + 1;
         int newCommitLength = state.getCommitLength();
-        for (int candidateLength = state.getCommitLength() + 1; candidateLength <= state.getLog().size(); candidateLength++) {
+        for (int candidateLength = state.getCommitLength() + 1; candidateLength <= state.getLog()
+                .size(); candidateLength++) {
             int acknowledgements = 1;
             for (String peer : state.getPeers()) {
                 if (state.getAckedLength().getOrDefault(peer, 0) >= candidateLength) {
@@ -387,7 +419,8 @@ public class RaftService {
 
     private boolean isCandidateLogUpToDate(VoteRequest voteRequest) {
         int lastTerm = lastLogTerm();
-        return voteRequest.getLastTerm() > lastTerm || (voteRequest.getLastTerm() == lastTerm && voteRequest.getLogLength() >= state.getLog().size());
+        return voteRequest.getLastTerm() > lastTerm
+                || (voteRequest.getLastTerm() == lastTerm && voteRequest.getLogLength() >= state.getLog().size());
     }
 
     private int lastLogTerm() {
@@ -462,7 +495,8 @@ public class RaftService {
             return new ArrayList<>();
         }
         List<LogEntry> log = new ArrayList<>();
-        try (BufferedReader bufferedReader = new BufferedReader(new FileReader(path.toFile(), StandardCharsets.UTF_8))) {
+        try (BufferedReader bufferedReader = new BufferedReader(
+                new FileReader(path.toFile(), StandardCharsets.UTF_8))) {
             String line;
             int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
@@ -497,7 +531,8 @@ public class RaftService {
     }
 
     private void appendLogEntry(LogEntry logEntry) {
-        try (BufferedWriter writer = Files.newBufferedWriter(resolvePath(LOG_FILE),StandardCharsets.UTF_8,StandardOpenOption.CREATE,StandardOpenOption.APPEND)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(resolvePath(LOG_FILE), StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
             writer.write(objectMapper.writeValueAsString(logEntry));
             writer.newLine();
             writer.flush();
@@ -507,7 +542,8 @@ public class RaftService {
     }
 
     private void rewriteLog() {
-        try (BufferedWriter writer = Files.newBufferedWriter(resolvePath(LOG_FILE), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(resolvePath(LOG_FILE), StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
             for (int index = 0; index < state.getLog().size(); index++) {
                 LogEntry entry = state.getLog().get(index);
                 entry.setIndex(index);
@@ -540,5 +576,13 @@ public class RaftService {
 
     private Path resolvePath(String filename) {
         return basePath().resolve(filename);
+    }
+
+    public String getValue(String key) {
+        if(stateMachine.containsKey(key)) {
+            return stateMachine.get(key);
+        } else {
+            return null;
+        }
     }
 }

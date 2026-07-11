@@ -1,6 +1,7 @@
 package com.consensus.raft.controllers;
 
 import com.consensus.raft.dtos.Command;
+import com.consensus.raft.dtos.CommandResponse;
 import com.consensus.raft.dtos.LogRequest;
 import com.consensus.raft.dtos.LogResponse;
 import com.consensus.raft.dtos.VoteRequest;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,16 +34,28 @@ public class RaftController {
     }
 
     @PostMapping("/command")
-    public ResponseEntity<Map<String, Object>> submitCommand(@RequestBody Command command) {
+    public ResponseEntity<?> submitCommand(@RequestBody Command command) {
         boolean accepted = raftService.onWriteRequest(command);
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("accepted", accepted);
-        response.put("leaderId", raftService.getLeader());
-        if (accepted) {
-            return ResponseEntity.accepted().body(response);
+        String leader = raftService.getLeader();
+        CommandResponse response = new CommandResponse();
+        response.setAccepted(accepted);
+        response.setLeaderAddress(leader);
+        if(accepted) {
+            response.setMessage("Accepted");
+            return new ResponseEntity<>(response, HttpStatus.ACCEPTED);
         }
-        response.put("message", "This node is not the leader");
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        response.setMessage("This node is not the leader");
+        return new ResponseEntity<>(response, HttpStatus.CONFLICT);
+    }
+
+    @GetMapping("/{key}")
+    public ResponseEntity<?> getValue(@PathVariable String key) {
+        String val = raftService.getValue(key);
+        if(val != null && !val.isBlank()) {
+            return new ResponseEntity<>(val, HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>("Value for given key was not found", HttpStatus.NOT_FOUND);
+        }
     }
 
     @GetMapping("/state")

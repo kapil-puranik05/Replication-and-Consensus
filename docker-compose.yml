@@ -1,6 +1,12 @@
-version: "3.9"
-
 services:
+  gateway:
+    build:
+      context: ./middleware
+    command:
+      - "--server.port=9000"
+    ports:
+      - "9000:9000"
+
   node1:
     build:
       context: ./raft
@@ -10,7 +16,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - "./raft/config/node1":"app/config/node1"
+      - ./raft/configs/node1:/app/configs/node1
+    depends_on:
+      - gateway
 
   node2:
     build:
@@ -21,7 +29,9 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - "./raft/config/node2":"app/config/node2"
+      - ./raft/configs/node2:/app/configs/node2
+    depends_on:
+      - gateway
 
   node3:
     build:
@@ -32,4 +42,6 @@ services:
     ports:
       - "8082:8082"
     volumes:
-      - "./raft/config/node3":"app/config/node3"
+      - ./raft/configs/node3:/app/configs/node3
+    depends_on:
+      - gateway

@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class NodeDetails {
     private String node;
     private List<String> peers;
+    private String gatewayAddress;
 }
